@@ -1,14 +1,15 @@
-import { CheckCircle, ArrowRight, Home as HomeIcon, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { CheckCircle, ArrowRight, Home as HomeIcon, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getPurchase } from '../api/lottos';
+import type { PurchaseDetailResponse } from '../api/types';
 
 type Page = 'home' | 'purchase' | 'purchase-result' | 'purchase-history' | 'winning' | 'statistics';
 
 interface PurchaseResultProps {
   onNavigate: (page: Page) => void;
-  tickets: any[];
+  purchaseId: number;
 }
 
-// 로또 번호 색상
 const getBallColor = (number: number): string => {
   if (number <= 10) return '#FFB800';
   if (number <= 20) return '#00D9C0';
@@ -17,9 +18,89 @@ const getBallColor = (number: number): string => {
   return '#8B5CF6';
 };
 
-export function PurchaseResult({ onNavigate, tickets }: PurchaseResultProps) {
+export function PurchaseResult({ onNavigate, purchaseId }: PurchaseResultProps) {
   const [isNumbersVisible, setIsNumbersVisible] = useState(false);
-  const totalAmount = tickets.length * 1000;
+  const [purchase, setPurchase] = useState<PurchaseDetailResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchPurchase = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await getPurchase(purchaseId);
+        setPurchase(data);
+      } catch (e: any) {
+        setError(e.message || '구매 정보를 불러오는 중 오류가 발생했습니다.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPurchase();
+  }, [purchaseId]);
+
+  if (isLoading) {
+    return (
+      <div style={{ 
+        minHeight: '100vh',
+        backgroundColor: '#FAFAFA',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{ textAlign: 'center', color: '#767676' }}>
+          <div style={{ fontSize: '1.2rem', marginBottom: '8px' }}>로딩 중...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !purchase) {
+    return (
+      <div style={{ 
+        minHeight: '100vh',
+        backgroundColor: '#FAFAFA',
+        padding: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{
+          backgroundColor: 'white',
+          padding: '24px',
+          borderRadius: '16px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+          textAlign: 'center',
+          maxWidth: '400px'
+        }}>
+          <AlertCircle style={{ width: '48px', height: '48px', color: '#FF6B6B', margin: '0 auto 16px' }} />
+          <h3 style={{ marginBottom: '8px', color: '#191919' }}>오류 발생</h3>
+          <p style={{ color: '#767676', marginBottom: '16px' }}>
+            {error || '구매 정보를 불러올 수 없습니다.'}
+          </p>
+          <button
+            onClick={() => onNavigate('home')}
+            style={{
+              padding: '12px 24px',
+              borderRadius: '8px',
+              backgroundColor: '#00D9C0',
+              color: 'white',
+              border: 'none',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            홈으로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const tickets = purchase.lottos || [];
+  const totalAmount = purchase.purchaseAmount;
 
   return (
     <div style={{ 
@@ -151,7 +232,9 @@ export function PurchaseResult({ onNavigate, tickets }: PurchaseResultProps) {
         {/* 다음 단계 버튼들 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <button
-            onClick={() => onNavigate('winning')}
+            onClick={() => {
+              onNavigate('winning');
+            }}
             style={{
               width: '100%',
               padding: '16px',

@@ -1,14 +1,15 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Award, AlertCircle, CheckCircle, ShoppingCart, ChevronDown, ChevronUp, Home as HomeIcon, History } from 'lucide-react';
+import { getPurchase, putResult, getResult } from '../api/lottos';
+import type { PurchaseDetailResponse, LottoResultResponse } from '../api/types';
 
 type Page = 'home' | 'purchase' | 'purchase-result' | 'purchase-history' | 'winning' | 'statistics';
 
 interface WinningNumbersProps {
   onNavigate: (page: Page) => void;
-  tickets: any[];
+  purchaseId: number;
 }
 
-// 로또 번호 색상
 const getBallColor = (number: number): string => {
   if (number <= 10) return '#FFB800';
   if (number <= 20) return '#00D9C0';
@@ -17,7 +18,6 @@ const getBallColor = (number: number): string => {
   return '#8B5CF6';
 };
 
-// 당첨 등수 계산
 const calculateRank = (matchCount: number, hasBonus: boolean): string => {
   if (matchCount === 6) return '1등';
   if (matchCount === 5 && hasBonus) return '2등';
@@ -38,21 +38,39 @@ const getRankColor = (rank: string): string => {
   }
 };
 
-export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
+export function WinningNumbers({ onNavigate, purchaseId }: WinningNumbersProps) {
+  const [purchase, setPurchase] = useState<PurchaseDetailResponse | null>(null);
   const [winningNumbers, setWinningNumbers] = useState<string[]>(['', '', '', '', '', '']);
   const [bonusNumber, setBonusNumber] = useState('');
   const [error, setError] = useState('');
   const [isChecked, setIsChecked] = useState(false);
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<LottoResultResponse | null>(null);
   const [isDetailsVisible, setIsDetailsVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // 각 input에 대한 ref
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    const fetchPurchase = async () => {
+      try {
+        setIsLoading(true);
+        setError('');
+        const data = await getPurchase(purchaseId);
+        setPurchase(data);
+      } catch (e: any) {
+        setError(e.message || '구매 정보를 불러오는 중 오류가 발생했습니다.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPurchase();
+  }, [purchaseId]);
 
   const handleNumberChange = (index: number, value: string) => {
     const num = value.replace(/[^0-9]/g, '');
     
-    // 빈 값이거나 1-45 범위 내
     if (num === '' || (parseInt(num) >= 1 && parseInt(num) <= 45)) {
       const newNumbers = [...winningNumbers];
       newNumbers[index] = num;
@@ -60,14 +78,11 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
       setError('');
       setIsChecked(false);
 
-      // 2자리 입력 시 자동으로 다음 필드로 이동
       if (num.length === 2 && index < 5) {
         inputRefs.current[index + 1]?.focus();
       } else if (num.length === 2 && index === 5) {
-        // 마지막 숫자면 보너스로 이동
         inputRefs.current[6]?.focus();
       }
-      // 1자리인데 1-9 범위가 아닌 10-45 범위 시작 숫자면 다음 필드로
       else if (num.length === 1 && parseInt(num) > 4 && index < 5) {
         setTimeout(() => {
           inputRefs.current[index + 1]?.focus();
@@ -85,8 +100,7 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
     }
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Backspace를 눌렀을 때 현재 필드가 비어있으면 이전 필드로 이동
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement> | KeyboardEvent) => {
     if (e.key === 'Backspace') {
       if (index === 6 && bonusNumber === '' && inputRefs.current[5]) {
         e.preventDefault();
@@ -99,7 +113,6 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
   };
 
   const validateNumbers = (): boolean => {
-    // 모든 번호 입력 확인
     if (winningNumbers.some(n => n === '') || bonusNumber === '') {
       setError('모든 번호를 입력해주세요');
       return false;
@@ -108,7 +121,6 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
     const nums = winningNumbers.map(n => parseInt(n));
     const bonus = parseInt(bonusNumber);
 
-    // 중복 확인
     const allNumbers = [...nums, bonus];
     if (new Set(allNumbers).size !== allNumbers.length) {
       setError('중복된 번호가 있습니다');
@@ -118,59 +130,48 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
     return true;
   };
 
-  const handleCheck = () => {
-    if (!validateNumbers()) {
+  const handleCheck = async () => {
+    if (!validateNumbers() || !purchase) {
       return;
     }
 
-    const winNums = winningNumbers.map(n => parseInt(n));
-    const bonus = parseInt(bonusNumber);
+    const winNums = winningNumbers.map(n => parseInt(n, 10)).sort((a, b) => a - b);
+    const bonus = parseInt(bonusNumber, 10);
 
-    // 각 티켓에 대해 당첨 여부 확인
-    const details = tickets.map((ticket, index) => {
-      const matchCount = ticket.numbers.filter((n: number) => winNums.includes(n)).length;
-      const hasBonus = ticket.numbers.includes(bonus);
-      const rank = calculateRank(matchCount, hasBonus);
+    if (winNums.length !== 6) {
+      setError('당첨 번호는 6개여야 합니다.');
+      return;
+    }
+    if (winNums.some(n => n < 1 || n > 45)) {
+      setError('당첨 번호는 1-45 사이의 숫자여야 합니다.');
+      return;
+    }
+    if (isNaN(bonus) || bonus < 1 || bonus > 45) {
+      setError('보너스 번호는 1-45 사이의 숫자여야 합니다.');
+      return;
+    }
+    if (winNums.includes(bonus)) {
+      setError('보너스 번호는 당첨 번호와 중복될 수 없습니다.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setError('');
       
-      // Mock 당첨금 (실제로는 서버에서)
-      let prize = 0;
-      if (rank === '1등') prize = 2000000000;
-      else if (rank === '2등') prize = 50000000;
-      else if (rank === '3등') prize = 1500000;
-      else if (rank === '4등') prize = 50000;
-      else if (rank === '5등') prize = 5000;
+      await putResult(purchaseId, {
+        lottoNumbers: winNums,
+        bonusNumber: bonus
+      });
       
-      return {
-        gameId: ticket.id,
-        numbers: ticket.numbers,
-        matchCount,
-        hasBonus,
-        rank,
-        prize
-      };
-    });
-
-    // 등수별 집계
-    const ranks = {
-      'FIRST': details.filter(d => d.rank === '1등').length,
-      'SECOND': details.filter(d => d.rank === '2등').length,
-      'THIRD': details.filter(d => d.rank === '3등').length,
-      'FOURTH': details.filter(d => d.rank === '4등').length,
-      'FIFTH': details.filter(d => d.rank === '5등').length,
-      'NONE': details.filter(d => d.rank === '낙첨').length
-    };
-
-    const totalPrize = details.reduce((sum, d) => sum + d.prize, 0);
-    const totalAmount = tickets.length * 1000;
-
-    setResults({
-      totalGames: tickets.length,
-      totalAmount,
-      totalPrize,
-      ranks,
-      details
-    });
-    setIsChecked(true);
+      const resultData = await getResult(purchaseId);
+      setResults(resultData);
+      setIsChecked(true);
+    } catch (e: any) {
+      setError(e.message || '당첨 결과를 확인하는 중 오류가 발생했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleReset = () => {
@@ -180,9 +181,73 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
     setIsChecked(false);
     setResults(null);
     setIsDetailsVisible(false);
-    // 첫 번째 입력 필드로 포커스
     inputRefs.current[0]?.focus();
   };
+
+  if (isLoading) {
+    return (
+      <div style={{ 
+        minHeight: '100vh',
+        backgroundColor: '#FAFAFA',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{ textAlign: 'center', color: '#767676' }}>
+          <div style={{ fontSize: '1.2rem', marginBottom: '8px' }}>로딩 중...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !purchase) {
+    return (
+      <div style={{ 
+        minHeight: '100vh',
+        backgroundColor: '#FAFAFA',
+        padding: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{
+          backgroundColor: 'white',
+          padding: '24px',
+          borderRadius: '16px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+          textAlign: 'center',
+          maxWidth: '400px'
+        }}>
+          <AlertCircle style={{ width: '48px', height: '48px', color: '#FF6B6B', margin: '0 auto 16px' }} />
+          <h3 style={{ marginBottom: '8px', color: '#191919' }}>오류 발생</h3>
+          <p style={{ color: '#767676', marginBottom: '16px' }}>
+            {error || '구매 정보를 불러올 수 없습니다.'}
+          </p>
+          <button
+            onClick={() => onNavigate('home')}
+            style={{
+              padding: '12px 24px',
+              borderRadius: '8px',
+              backgroundColor: '#00D9C0',
+              color: 'white',
+              border: 'none',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            홈으로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!purchase) {
+    return null;
+  }
+
+  const tickets = purchase.lottos || [];
+  const totalAmount = purchase.purchaseAmount;
 
   return (
     <div style={{ 
@@ -258,7 +323,6 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
                     if (!error || num !== '') {
                       e.currentTarget.style.borderColor = '#00D9C0';
                     }
-                    // 포커스 시 전체 선택
                     e.currentTarget.select();
                   }}
                   onBlur={(e) => {
@@ -373,22 +437,33 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
             </button>
             <button
               onClick={handleCheck}
+              disabled={isSubmitting}
               style={{
                 flex: 2,
                 padding: '14px',
                 borderRadius: '12px',
-                background: 'linear-gradient(135deg, #00D9C0 0%, #00C0AA 100%)',
+                background: isSubmitting
+                  ? '#CCCCCC'
+                  : 'linear-gradient(135deg, #00D9C0 0%, #00C0AA 100%)',
                 color: 'white',
                 fontWeight: '600',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
                 transition: 'transform 0.2s'
               }}
-              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.98)'}
-              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseDown={(e) => {
+                if (!isSubmitting) {
+                  e.currentTarget.style.transform = 'scale(0.98)';
+                }
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
             >
-              당첨 확인하기
+              {isSubmitting ? '확인 중...' : '당첨 확인하기'}
             </button>
           </div>
         </div>
@@ -410,14 +485,14 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '16px' }}>
-                <ResultSummary label="총 구매 금액" value={`${results.totalAmount.toLocaleString()}원`} />
-                <ResultSummary label="총 당첨 금액" value={`${results.totalPrize.toLocaleString()}원`} />
+                <ResultSummary label="총 구매 금액" value={`${totalAmount.toLocaleString()}원`} />
+                <ResultSummary label="총 당첨 금액" value={`${(results?.totalPrize || 0).toLocaleString()}원`} />
               </div>
 
               <div style={{
                 padding: '16px',
                 borderRadius: '12px',
-                backgroundColor: results.totalPrize > results.totalAmount ? '#F0FDF4' : '#FAFAFA',
+                backgroundColor: (results?.totalPrize || 0) > totalAmount ? '#F0FDF4' : '#FAFAFA',
                 textAlign: 'center'
               }}>
                 <div style={{ fontSize: '0.875rem', color: '#767676', marginBottom: '4px' }}>
@@ -426,9 +501,9 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
                 <div style={{ 
                   fontSize: '1.5rem', 
                   fontWeight: '700',
-                  color: results.totalPrize > results.totalAmount ? '#00D9C0' : '#999'
+                  color: (results?.totalPrize || 0) > totalAmount ? '#00D9C0' : '#999'
                 }}>
-                  {((results.totalPrize / results.totalAmount) * 100).toFixed(1)}%
+                  {(results?.returnRate || 0).toFixed(1)}%
                 </div>
               </div>
             </div>
@@ -443,12 +518,35 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
             }}>
               <h3 style={{ fontSize: '1rem', marginBottom: '16px' }}>등수별 당첨</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <RankRow rank="1등" count={results.ranks.FIRST} color="#FFB800" />
-                <RankRow rank="2등" count={results.ranks.SECOND} color="#00D9C0" />
-                <RankRow rank="3등" count={results.ranks.THIRD} color="#8B5CF6" />
-                <RankRow rank="4등" count={results.ranks.FOURTH} color="#FF6B6B" />
-                <RankRow rank="5등" count={results.ranks.FIFTH} color="#999999" />
-                <RankRow rank="낙첨" count={results.ranks.NONE} color="#E5E5E5" />
+                {(results?.rankCounts || []).map((rankCount, index) => {
+                  const rankColors: { [key: string]: string } = {
+                    'FIRST': '#FFB800',
+                    'SECOND': '#00D9C0',
+                    'THIRD': '#8B5CF6',
+                    'FOURTH': '#FF6B6B',
+                    'FIFTH': '#999999',
+                    'NONE': '#E5E5E5',
+                    '1등': '#FFB800',
+                    '2등': '#00D9C0',
+                    '3등': '#8B5CF6',
+                    '4등': '#FF6B6B',
+                    '5등': '#999999',
+                    '낙첨': '#E5E5E5'
+                  };
+                  const rankLabels: { [key: string]: string } = {
+                    'FIRST': '1등',
+                    'SECOND': '2등',
+                    'THIRD': '3등',
+                    'FOURTH': '4등',
+                    'FIFTH': '5등',
+                    'NONE': '낙첨'
+                  };
+                  const label = rankLabels[rankCount.rank] || rankCount.rank;
+                  const color = rankColors[rankCount.rank] || '#E5E5E5';
+                  return (
+                    <RankRow key={index} rank={label} count={rankCount.count} color={color} />
+                  );
+                })}
               </div>
             </div>
 
@@ -484,65 +582,71 @@ export function WinningNumbers({ onNavigate, tickets }: WinningNumbersProps) {
               
               {isDetailsVisible && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {results.details.map((detail: any, index: number) => (
-                    <div
-                      key={index}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: '#FAFAFA',
-                        borderRadius: '8px'
-                      }}
-                    >
-                      <div style={{ 
-                        fontSize: '0.8125rem', 
-                        color: '#767676', 
-                        marginBottom: '8px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{ fontWeight: '600' }}>{String.fromCharCode(65 + index)}</span>
-                        <span style={{ 
-                          fontWeight: '600',
-                          color: getRankColor(detail.rank)
+                  {tickets.map((ticket, index) => {
+                    const winNums = winningNumbers.map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+                    const bonus = parseInt(bonusNumber, 10);
+                    const matchCount = ticket.numbers.filter((n: number) => winNums.includes(n)).length;
+                    const hasBonus = ticket.numbers.includes(bonus);
+                    const rank = calculateRank(matchCount, hasBonus);
+                    
+                    return (
+                      <div
+                        key={index}
+                        style={{
+                          padding: '16px',
+                          backgroundColor: '#FAFAFA',
+                          borderRadius: '8px'
+                        }}
+                      >
+                        <div style={{ 
+                          fontSize: '0.8125rem', 
+                          color: '#767676', 
+                          marginBottom: '8px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
                         }}>
-                          {detail.rank}
-                        </span>
-                      </div>
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '6px',
-                        marginBottom: '8px',
-                        flexWrap: 'wrap'
-                      }}>
-                        {detail.numbers.map((num: number, i: number) => (
-                          <div
-                            key={i}
-                            style={{
-                              width: '32px',
-                              height: '32px',
-                              borderRadius: '50%',
-                              backgroundColor: getBallColor(num),
-                              color: 'white',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontWeight: '600',
-                              fontSize: '0.8125rem'
-                            }}
-                          >
-                            {num}
-                          </div>
-                        ))}
-                      </div>
-                      {detail.prize > 0 && (
-                        <div style={{ fontSize: '0.875rem', color: '#00D9C0', fontWeight: '600' }}>
-                          당첨금: {detail.prize.toLocaleString()}원
+                          <span style={{ fontWeight: '600' }}>{String.fromCharCode(65 + index)}</span>
+                          <span style={{ 
+                            fontWeight: '600',
+                            color: getRankColor(rank)
+                          }}>
+                            {rank}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px',
+                          marginBottom: '8px',
+                          flexWrap: 'wrap'
+                        }}>
+                          {ticket.numbers.map((num: number, i: number) => (
+                            <div
+                              key={i}
+                              style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: getBallColor(num),
+                                color: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: '600',
+                                fontSize: '0.8125rem'
+                              }}
+                            >
+                              {num}
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#999' }}>
+                          일치: {matchCount}개 {hasBonus && '(보너스 포함)'}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

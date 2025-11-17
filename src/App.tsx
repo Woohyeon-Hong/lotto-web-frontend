@@ -11,11 +11,11 @@ type Page = 'home' | 'purchase' | 'purchase-result' | 'purchase-history' | 'winn
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
-  const [purchasedTickets, setPurchasedTickets] = useState<any[]>([]);
+  const [purchaseId, setPurchaseId] = useState<number | null>(null);
   const [lastPurchaseAmount, setLastPurchaseAmount] = useState<number | null>(null);
 
-  const handlePurchaseComplete = (tickets: any[], amount: number) => {
-    setPurchasedTickets(tickets);
+  const handlePurchaseComplete = (id: number, amount: number) => {
+    setPurchaseId(id);
     setLastPurchaseAmount(amount);
     setCurrentPage('purchase-result');
   };
@@ -27,11 +27,11 @@ export default function App() {
       case 'purchase':
         return <Purchase onNavigate={setCurrentPage} onPurchaseComplete={handlePurchaseComplete} lastAmount={lastPurchaseAmount} />;
       case 'purchase-result':
-        return <PurchaseResult onNavigate={setCurrentPage} tickets={purchasedTickets} />;
+        return purchaseId ? <PurchaseResult onNavigate={setCurrentPage} purchaseId={purchaseId} /> : <Home onNavigate={setCurrentPage} />;
       case 'purchase-history':
-        return <Histories onNavigate={setCurrentPage} />;
+        return <Histories onNavigate={setCurrentPage} onSetPurchaseId={setPurchaseId} />;
       case 'winning':
-        return <WinningNumbers onNavigate={setCurrentPage} tickets={purchasedTickets} />;
+        return purchaseId ? <WinningNumbers onNavigate={setCurrentPage} purchaseId={purchaseId} /> : <Home onNavigate={setCurrentPage} />;
       case 'statistics':
         return <Statistics onNavigate={setCurrentPage} />;
       default:
@@ -39,7 +39,6 @@ export default function App() {
     }
   };
 
-  // 구매 프로세스 중에는 네비게이션 바 숨김
   const isInPurchaseProcess = ['purchase-result', 'winning'].includes(currentPage);
 
   return (

@@ -1,44 +1,14 @@
-import { FileText, Calendar, ChevronDown, ChevronUp, Ticket } from 'lucide-react';
-import { useState } from 'react';
+import { FileText, Calendar, ChevronDown, ChevronUp, Ticket, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getPurchases, getPurchase } from '../api/lottos';
+import type { PurchaseSummaryResponse, PurchaseDetailResponse } from '../api/types';
 
 type Page = 'home' | 'purchase' | 'purchase-result' | 'purchase-history' | 'winning' | 'statistics';
 
 interface HistoriesProps {
   onNavigate: (page: Page) => void;
+  onSetPurchaseId?: (id: number) => void;
 }
-
-// Mock 데이터
-interface LottoTicket {
-  id: number;
-  numbers: number[];
-  purchaseDate: string;
-  amount: number;
-  ticketCount: number;
-}
-
-const mockHistories: LottoTicket[] = [
-  {
-    id: 1,
-    numbers: 12345,
-    purchaseDate: '2025-11-13 14:30',
-    amount: 5000,
-    ticketCount: 5
-  },
-  {
-    id: 2,
-    numbers: 12344,
-    purchaseDate: '2025-11-12 10:15',
-    amount: 10000,
-    ticketCount: 10
-  },
-  {
-    id: 3,
-    numbers: 12343,
-    purchaseDate: '2025-11-11 16:45',
-    amount: 3000,
-    ticketCount: 3
-  }
-];
 
 // 로또 번호 색상
 const getBallColor = (number: number): string => {
@@ -49,12 +19,64 @@ const getBallColor = (number: number): string => {
   return '#8B5CF6'; // 보라색
 };
 
-export function Histories({ onNavigate }: HistoriesProps) {
+export function Histories({ onNavigate, onSetPurchaseId }: HistoriesProps) {
+  const [purchases, setPurchases] = useState<PurchaseSummaryResponse[]>([]);
+  const [expandedDetails, setExpandedDetails] = useState<{ [key: number]: PurchaseDetailResponse }>({});
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const toggleExpand = (id: number) => {
-    setExpandedId(expandedId === id ? null : id);
+  useEffect(() => {
+    const fetchPurchases = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await getPurchases();
+        setPurchases(data.purchases || []);
+      } catch (e: any) {
+        setError(e.message || '구매 내역을 불러오는 중 오류가 발생했습니다.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPurchases();
+  }, []);
+
+  const toggleExpand = async (id: number) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+
+    setExpandedId(id);
+
+    if (!expandedDetails[id]) {
+      try {
+        const detail = await getPurchase(id);
+        setExpandedDetails({ ...expandedDetails, [id]: detail });
+      } catch (e: any) {
+        setError(e.message || '구매 상세 정보를 불러오는 중 오류가 발생했습니다.');
+      }
+    }
   };
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${minutes}`;
+    } catch {
+      return dateString;
+    }
+  };
+
+  const totalAmount = purchases.reduce((sum, p) => sum + p.purchaseAmount, 0);
+  const totalTickets = purchases.reduce((sum, p) => sum + p.lottoCount, 0);
 
   return (
     <div style={{ 
@@ -76,27 +98,67 @@ export function Histories({ onNavigate }: HistoriesProps) {
       </header>
 
       <div style={{ padding: '20px' }}>
-        {/* 통계 요약 */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: '12px',
-          marginBottom: '24px'
-        }}>
-          <SummaryCard
-            label="총 구매 금액"
-            value={`${mockHistories.reduce((sum, h) => sum + h.amount, 0).toLocaleString()}원`}
-            icon="💰"
-          />
-          <SummaryCard
-            label="총 발행 장수"
-            value={`${mockHistories.reduce((sum, h) => sum + h.ticketCount, 0)}장`}
-            icon="🎟️"
-          />
-        </div>
+        {isLoading ? (
+          <div style={{
+            backgroundColor: 'white',
+            padding: '48px 24px',
+            borderRadius: '16px',
+            textAlign: 'center',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+          }}>
+            <div style={{ fontSize: '1.2rem', color: '#767676' }}>로딩 중...</div>
+          </div>
+        ) : error ? (
+          <div style={{
+            backgroundColor: 'white',
+            padding: '48px 24px',
+            borderRadius: '16px',
+            textAlign: 'center',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+          }}>
+            <AlertCircle style={{ width: '48px', height: '48px', color: '#FF6B6B', margin: '0 auto 16px' }} />
+            <h3 style={{ marginBottom: '8px', color: '#191919' }}>오류 발생</h3>
+            <p style={{ color: '#767676', fontSize: '0.875rem', marginBottom: '24px' }}>
+              {error}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '12px 24px',
+                borderRadius: '8px',
+                backgroundColor: '#00D9C0',
+                color: 'white',
+                border: 'none',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              다시 시도
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* 통계 요약 */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '12px',
+              marginBottom: '24px'
+            }}>
+              <SummaryCard
+                label="총 구매 금액"
+                value={`${totalAmount.toLocaleString()}원`}
+                icon="💰"
+              />
+              <SummaryCard
+                label="총 발행 장수"
+                value={`${totalTickets}장`}
+                icon="🎟️"
+              />
+            </div>
 
-        {/* 내역이 없을 때 */}
-        {mockHistories.length === 0 ? (
+            {/* 내역이 없을 때 */}
+            {purchases.length === 0 ? (
           <div style={{
             backgroundColor: 'white',
             padding: '48px 24px',
@@ -127,34 +189,39 @@ export function Histories({ onNavigate }: HistoriesProps) {
             >
               로또 구매하기
             </button>
-          </div>
-        ) : (
-          <>
-            {/* 내역 제목 */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '16px'
-            }}>
-              <h2 style={{ fontSize: '1.125rem', color: '#191919' }}>구매 내역</h2>
-              <span style={{ fontSize: '0.875rem', color: '#767676' }}>
-                총 {mockHistories.length}건
-              </span>
             </div>
+          ) : (
+            <>
+              {/* 내역 제목 */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '16px'
+              }}>
+                <h2 style={{ fontSize: '1.125rem', color: '#191919' }}>구매 내역</h2>
+                <span style={{ fontSize: '0.875rem', color: '#767676' }}>
+                  총 {purchases.length}건
+                </span>
+              </div>
 
-            {/* 내역 리스트 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {mockHistories.map((history) => (
-                <HistoryCard
-                  key={history.id}
-                  history={history}
-                  isExpanded={expandedId === history.id}
-                  onToggle={() => toggleExpand(history.id)}
-                  onNavigate={onNavigate}
-                />
-              ))}
-            </div>
+              {/* 내역 리스트 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {purchases.map((purchase) => (
+                  <HistoryCard
+                    key={purchase.id}
+                    purchase={purchase}
+                    detail={expandedDetails[purchase.id]}
+                    isExpanded={expandedId === purchase.id}
+                    onToggle={() => toggleExpand(purchase.id)}
+                    onNavigate={onNavigate}
+                    onSetPurchaseId={onSetPurchaseId}
+                    formatDate={formatDate}
+                  />
+                ))}
+              </div>
+            </>
+          )}
           </>
         )}
       </div>
@@ -189,20 +256,16 @@ function SummaryCard({ label, value, icon }: SummaryCardProps) {
 }
 
 interface HistoryCardProps {
-  history: LottoTicket;
+  purchase: PurchaseSummaryResponse;
+  detail: PurchaseDetailResponse | undefined;
   isExpanded: boolean;
   onToggle: () => void;
   onNavigate: (page: Page) => void;
+  onSetPurchaseId?: (id: number) => void;
+  formatDate: (dateString: string) => string;
 }
 
-function HistoryCard({ history, isExpanded, onToggle, onNavigate }: HistoryCardProps) {
-  // Mock: 실제로는 서버에서 각 회차별 번호를 가져와야 함
-  const mockLottoNumbers = Array.from({ length: history.ticketCount }, (_, i) => ({
-    gameId: history.numbers + i,
-    numbers: generateRandomNumbers(),
-    bonusNumber: Math.floor(Math.random() * 45) + 1
-  }));
-
+function HistoryCard({ purchase, detail, isExpanded, onToggle, onNavigate, onSetPurchaseId, formatDate }: HistoryCardProps) {
   return (
     <div style={{
       backgroundColor: 'white',
@@ -229,7 +292,7 @@ function HistoryCard({ history, isExpanded, onToggle, onNavigate }: HistoryCardP
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Calendar style={{ width: '16px', height: '16px', color: '#767676' }} />
             <span style={{ fontSize: '0.875rem', color: '#767676' }}>
-              {history.purchaseDate}
+              {formatDate(purchase.purchasedAt)}
             </span>
           </div>
           {isExpanded ? (
@@ -244,19 +307,21 @@ function HistoryCard({ history, isExpanded, onToggle, onNavigate }: HistoryCardP
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
               <Ticket style={{ width: '16px', height: '16px', color: '#00D9C0' }} />
               <span style={{ fontWeight: '600', fontSize: '1rem', color: '#191919' }}>
-                {history.ticketCount}장 구매
+                {purchase.lottoCount}장 구매
               </span>
             </div>
-            <div style={{ fontSize: '0.875rem', color: '#999' }}>
-              게임 #{history.numbers} ~ #{history.numbers + history.ticketCount - 1}
-            </div>
+            {purchase.hasResult && purchase.returnRate !== null && (
+              <div style={{ fontSize: '0.875rem', color: purchase.returnRate >= 100 ? '#00D9C0' : '#999' }}>
+                수익률: {purchase.returnRate.toFixed(1)}%
+              </div>
+            )}
           </div>
           <div style={{ 
             fontSize: '1.125rem', 
             fontWeight: '700', 
             color: '#00D9C0' 
           }}>
-            {history.amount.toLocaleString()}원
+            {purchase.purchaseAmount.toLocaleString()}원
           </div>
         </div>
       </button>
@@ -267,84 +332,88 @@ function HistoryCard({ history, isExpanded, onToggle, onNavigate }: HistoryCardP
           padding: '0 20px 20px 20px',
           borderTop: '1px solid #F0F0F0'
         }}>
-          <div style={{ paddingTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {mockLottoNumbers.map((lotto, index) => (
-              <div
-                key={index}
-                style={{
-                  padding: '16px',
-                  backgroundColor: '#FAFAFA',
-                  borderRadius: '8px'
-                }}
-              >
-                <div style={{ 
-                  fontSize: '0.8125rem', 
-                  color: '#767676', 
-                  marginBottom: '8px' 
-                }}>
-                  게임 #{lotto.gameId}
-                </div>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '6px',
-                  flexWrap: 'wrap'
-                }}>
-                  {lotto.numbers.map((num, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        backgroundColor: getBallColor(num),
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: '600',
-                        fontSize: '0.875rem'
-                      }}
-                    >
-                      {num}
+          {detail ? (
+            <>
+              <div style={{ paddingTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {detail.lottos.map((lotto, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      padding: '16px',
+                      backgroundColor: '#FAFAFA',
+                      borderRadius: '8px'
+                    }}
+                  >
+                    <div style={{ 
+                      fontSize: '0.8125rem', 
+                      color: '#767676', 
+                      marginBottom: '8px' 
+                    }}>
+                      로또 #{index + 1}
                     </div>
-                  ))}
-                </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px',
+                      flexWrap: 'wrap'
+                    }}>
+                      {lotto.numbers.map((num, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '50%',
+                            backgroundColor: getBallColor(num),
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: '600',
+                            fontSize: '0.875rem'
+                          }}
+                        >
+                          {num}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <button
-            onClick={() => onNavigate('winning')}
-            style={{
-              width: '100%',
-              marginTop: '16px',
-              padding: '12px',
-              background: 'linear-gradient(135deg, #00D9C0 0%, #00C0AA 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              transition: 'transform 0.2s'
-            }}
-            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.98)'}
-            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            당첨 확인하기
-          </button>
+              <button
+                onClick={() => {
+                  if (onSetPurchaseId) {
+                    onSetPurchaseId(purchase.id);
+                  }
+                  onNavigate('winning');
+                }}
+                style={{
+                  width: '100%',
+                  marginTop: '16px',
+                  padding: '12px',
+                  background: 'linear-gradient(135deg, #00D9C0 0%, #00C0AA 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s'
+                }}
+                onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.98)'}
+                onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                당첨 확인하기
+              </button>
+            </>
+          ) : (
+            <div style={{ paddingTop: '20px', textAlign: 'center', color: '#767676' }}>
+              로딩 중...
+            </div>
+          )}
         </div>
       )}
     </div>
   );
-}
-
-// 랜덤 로또 번호 생성 (1~45 중 6개)
-function generateRandomNumbers(): number[] {
-  const numbers = new Set<number>();
-  while (numbers.size < 6) {
-    numbers.add(Math.floor(Math.random() * 45) + 1);
-  }
-  return Array.from(numbers).sort((a, b) => a - b);
 }

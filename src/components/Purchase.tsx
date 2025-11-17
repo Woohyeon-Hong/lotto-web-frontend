@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react';
 import { AlertCircle, RefreshCcw, Ticket } from 'lucide-react';
+import { createPurchase } from '../api/lottos';
 
 type Page = 'home' | 'purchase' | 'purchase-result' | 'purchase-history' | 'winning' | 'statistics';
 
 interface PurchaseProps {
   onNavigate: (page: Page) => void;
-  onPurchaseComplete: (tickets: any[], amount: number) => void;
+  onPurchaseComplete: (id: number, amount: number) => void;
   lastAmount: number | null;
 }
 
 const LOTTO_PRICE = 1000;
 
-// 로또 번호 자동 생성 함수
 const generateLottoNumbers = (): number[] => {
   const numbers: number[] = [];
   while (numbers.length < 6) {
@@ -27,8 +27,8 @@ export function Purchase({ onNavigate, onPurchaseComplete, lastAmount }: Purchas
   const [amount, setAmount] = useState('');
   const [ticketCount, setTicketCount] = useState(0);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  // 금액 입력 시 실시간 검증 및 장수 계산
   useEffect(() => {
     if (amount === '') {
       setTicketCount(0);
@@ -56,20 +56,23 @@ export function Purchase({ onNavigate, onPurchaseComplete, lastAmount }: Purchas
     setError('');
   }, [amount]);
 
-  const handlePurchase = () => {
+  const handlePurchase = async () => {
     if (error || !amount || ticketCount === 0) {
       return;
     }
 
     const numAmount = Number(amount);
     
-    // 로또 번호 자동 생성
-    const tickets = Array.from({ length: ticketCount }, (_, i) => ({
-      id: Date.now() + i,
-      numbers: generateLottoNumbers()
-    }));
-
-    onPurchaseComplete(tickets, numAmount);
+    try {
+      setIsLoading(true);
+      setError('');
+      const purchaseId = await createPurchase(numAmount);
+      onPurchaseComplete(purchaseId, numAmount);
+    } catch (e: any) {
+      setError(e.message || '구매 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRetry = () => {
@@ -283,22 +286,22 @@ export function Purchase({ onNavigate, onPurchaseComplete, lastAmount }: Purchas
             {/* 구매 버튼 */}
             <button
               onClick={handlePurchase}
-              disabled={!!error || !amount || ticketCount === 0}
+              disabled={!!error || !amount || ticketCount === 0 || isLoading}
               style={{
                 width: '100%',
                 padding: '16px',
                 borderRadius: '12px',
-                background: (error || !amount || ticketCount === 0)
+                background: (error || !amount || ticketCount === 0 || isLoading)
                   ? '#CCCCCC'
                   : 'linear-gradient(135deg, #00D9C0 0%, #00C0AA 100%)',
                 color: 'white',
                 fontWeight: '600',
                 border: 'none',
-                cursor: (error || !amount || ticketCount === 0) ? 'not-allowed' : 'pointer',
+                cursor: (error || !amount || ticketCount === 0 || isLoading) ? 'not-allowed' : 'pointer',
                 transition: 'transform 0.2s'
               }}
               onMouseDown={(e) => {
-                if (!error && amount && ticketCount > 0) {
+                if (!error && amount && ticketCount > 0 && !isLoading) {
                   e.currentTarget.style.transform = 'scale(0.98)';
                 }
               }}
@@ -309,7 +312,7 @@ export function Purchase({ onNavigate, onPurchaseComplete, lastAmount }: Purchas
                 e.currentTarget.style.transform = 'scale(1)';
               }}
             >
-              {ticketCount > 0 ? `${ticketCount}장 구매하기` : '구매하기'}
+              {isLoading ? '구매 중...' : (ticketCount > 0 ? `${ticketCount}장 구매하기` : '구매하기')}
             </button>
           </div>
         </div>

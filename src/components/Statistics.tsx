@@ -1,34 +1,13 @@
-import { TrendingUp, Award, DollarSign, Hash } from 'lucide-react';
+import { TrendingUp, Award, DollarSign, Hash, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getStatistics, getPurchases } from '../api/lottos';
+import type { ExpectedStatistics } from '../api/types';
 
 type Page = 'home' | 'purchase' | 'purchase-result' | 'purchase-history' | 'winning' | 'statistics';
 
 interface StatisticsProps {
   onNavigate: (page: Page) => void;
 }
-
-// Mock 통계 데이터
-const mockStats = {
-  totalPurchases: 25,
-  totalAmount: 50000,
-  totalPrize: 15000,
-  returnRate: 30.0,
-  ranks: {
-    'FIRST': 0,
-    'SECOND': 0,
-    'THIRD': 0,
-    'FOURTH': 2,
-    'FIFTH': 5,
-    'NONE': 18
-  },
-  mostFrequentNumbers: [
-    { number: 7, count: 8 },
-    { number: 23, count: 7 },
-    { number: 34, count: 6 },
-    { number: 12, count: 6 },
-    { number: 41, count: 5 },
-    { number: 15, count: 5 }
-  ]
-};
 
 // 로또 번호 색상
 const getBallColor = (number: number): string => {
@@ -40,13 +19,66 @@ const getBallColor = (number: number): string => {
 };
 
 export function Statistics({ onNavigate }: StatisticsProps) {
+  const [statistics, setStatistics] = useState<ExpectedStatistics | null>(null);
+  const [totalAmount, setTotalAmount] = useState<number>(0);
+  const [totalPrize, setTotalPrize] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchStatistics = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        const statsData = await getStatistics();
+        setStatistics(statsData);
+
+        const purchasesData = await getPurchases();
+        const total = purchasesData.purchases.reduce((sum, p) => sum + p.purchaseAmount, 0);
+        setTotalAmount(total);
+
+        const prize = purchasesData.purchases
+          .filter(p => p.hasResult && p.returnRate !== null)
+          .reduce((sum, p) => {
+            const rate = p.returnRate || 0;
+            return sum + (p.purchaseAmount * rate / 100);
+          }, 0);
+        setTotalPrize(prize);
+      } catch (e: any) {
+        setError(e.message || '통계를 불러오는 중 오류가 발생했습니다.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStatistics();
+  }, []);
+
+  const rankMap: { [key: string]: { label: string; color: string } } = {
+    'FIRST': { label: '1등', color: '#FFB800' },
+    'SECOND': { label: '2등', color: '#00D9C0' },
+    'THIRD': { label: '3등', color: '#8B5CF6' },
+    'FOURTH': { label: '4등', color: '#FF6B6B' },
+    'FIFTH': { label: '5등', color: '#999999' },
+  };
+
+  const rankCounts = statistics?.accumulatedRankCounts || [];
+  const rankMapCounts: { [key: string]: number } = {};
+  rankCounts.forEach(rc => {
+    rankMapCounts[rc.rank] = rc.count;
+  });
+
+  const totalWins = rankCounts.reduce((sum, rc) => sum + rc.count, 0);
+  const totalSamples = statistics?.totalSamples || 0;
+  const noneCount = Math.max(0, totalSamples - totalWins);
+
   return (
     <div style={{ 
       minHeight: '100vh',
       backgroundColor: '#FAFAFA',
       paddingBottom: '80px'
     }}>
-      {/* 헤더 */}
       <header style={{
         background: 'linear-gradient(135deg, #00D9C0 0%, #00C0AA 100%)',
         padding: '40px 20px',
@@ -60,7 +92,45 @@ export function Statistics({ onNavigate }: StatisticsProps) {
       </header>
 
       <div style={{ padding: '20px' }}>
-        {mockStats.totalPurchases === 0 ? (
+        {isLoading ? (
+          <div style={{
+            backgroundColor: 'white',
+            padding: '48px 24px',
+            borderRadius: '16px',
+            textAlign: 'center',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+          }}>
+            <div style={{ fontSize: '1.2rem', color: '#767676' }}>로딩 중...</div>
+          </div>
+        ) : error ? (
+          <div style={{
+            backgroundColor: 'white',
+            padding: '48px 24px',
+            borderRadius: '16px',
+            textAlign: 'center',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+          }}>
+            <AlertCircle style={{ width: '48px', height: '48px', color: '#FF6B6B', margin: '0 auto 16px' }} />
+            <h3 style={{ marginBottom: '8px', color: '#191919' }}>오류 발생</h3>
+            <p style={{ color: '#767676', fontSize: '0.875rem', marginBottom: '24px' }}>
+              {error}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '12px 24px',
+                borderRadius: '8px',
+                backgroundColor: '#00D9C0',
+                color: 'white',
+                border: 'none',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              다시 시도
+            </button>
+          </div>
+        ) : !statistics || totalSamples === 0 ? (
           /* 통계가 없을 때 */
           <div style={{
             backgroundColor: 'white',
@@ -113,13 +183,13 @@ export function Statistics({ onNavigate }: StatisticsProps) {
                   icon={<Hash style={{ width: '20px', height: '20px' }} />}
                   iconColor="#00D9C0"
                   label="총 구매 횟수"
-                  value={`${mockStats.totalPurchases}회`}
+                  value={`${totalSamples}회`}
                 />
                 <StatCard
                   icon={<DollarSign style={{ width: '20px', height: '20px' }} />}
                   iconColor="#8B5CF6"
                   label="총 구매 금액"
-                  value={`${mockStats.totalAmount.toLocaleString()}원`}
+                  value={`${totalAmount.toLocaleString()}원`}
                 />
               </div>
 
@@ -128,33 +198,32 @@ export function Statistics({ onNavigate }: StatisticsProps) {
                   icon={<Award style={{ width: '20px', height: '20px' }} />}
                   iconColor="#FFB800"
                   label="총 당첨 금액"
-                  value={`${mockStats.totalPrize.toLocaleString()}원`}
+                  value={`${totalPrize.toLocaleString()}원`}
                 />
                 <StatCard
                   icon={<TrendingUp style={{ width: '20px', height: '20px' }} />}
-                  iconColor={mockStats.returnRate >= 100 ? '#00D9C0' : '#FF6B6B'}
+                  iconColor={(statistics?.averageReturnRate || 0) >= 100 ? '#00D9C0' : '#FF6B6B'}
                   label="평균 수익률"
-                  value={`${mockStats.returnRate.toFixed(1)}%`}
+                  value={`${(statistics?.averageReturnRate || 0).toFixed(1)}%`}
                 />
               </div>
 
-              {/* 손익 */}
               <div style={{
                 padding: '16px',
                 borderRadius: '12px',
-                backgroundColor: mockStats.totalPrize > mockStats.totalAmount ? '#F0FDF4' : '#FFF1F0',
+                backgroundColor: totalPrize > totalAmount ? '#F0FDF4' : '#FFF1F0',
                 textAlign: 'center'
               }}>
                 <div style={{ fontSize: '0.875rem', color: '#767676', marginBottom: '4px' }}>
-                  {mockStats.totalPrize > mockStats.totalAmount ? '총 수익' : '총 손실'}
+                  {totalPrize > totalAmount ? '총 수익' : '총 손실'}
                 </div>
                 <div style={{ 
                   fontSize: '1.5rem', 
                   fontWeight: '700',
-                  color: mockStats.totalPrize > mockStats.totalAmount ? '#00D9C0' : '#FF6B6B'
+                  color: totalPrize > totalAmount ? '#00D9C0' : '#FF6B6B'
                 }}>
-                  {mockStats.totalPrize > mockStats.totalAmount ? '+' : '-'}
-                  {Math.abs(mockStats.totalPrize - mockStats.totalAmount).toLocaleString()}원
+                  {totalPrize > totalAmount ? '+' : '-'}
+                  {Math.abs(totalPrize - totalAmount).toLocaleString()}원
                 </div>
               </div>
             </div>
@@ -170,45 +239,27 @@ export function Statistics({ onNavigate }: StatisticsProps) {
               <h3 style={{ fontSize: '1rem', marginBottom: '16px' }}>등수별 당첨 통계</h3>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <RankStatRow 
-                  rank="1등" 
-                  count={mockStats.ranks.FIRST} 
-                  total={mockStats.totalPurchases}
-                  color="#FFB800"
-                />
-                <RankStatRow 
-                  rank="2등" 
-                  count={mockStats.ranks.SECOND} 
-                  total={mockStats.totalPurchases}
-                  color="#00D9C0"
-                />
-                <RankStatRow 
-                  rank="3등" 
-                  count={mockStats.ranks.THIRD} 
-                  total={mockStats.totalPurchases}
-                  color="#8B5CF6"
-                />
-                <RankStatRow 
-                  rank="4등" 
-                  count={mockStats.ranks.FOURTH} 
-                  total={mockStats.totalPurchases}
-                  color="#FF6B6B"
-                />
-                <RankStatRow 
-                  rank="5등" 
-                  count={mockStats.ranks.FIFTH} 
-                  total={mockStats.totalPurchases}
-                  color="#999999"
-                />
+                {['FIRST', 'SECOND', 'THIRD', 'FOURTH', 'FIFTH'].map(rank => {
+                  const count = rankMapCounts[rank] || 0;
+                  const config = rankMap[rank];
+                  return (
+                    <RankStatRow 
+                      key={rank}
+                      rank={config.label} 
+                      count={count} 
+                      total={totalSamples}
+                      color={config.color}
+                    />
+                  );
+                })}
                 <RankStatRow 
                   rank="낙첨" 
-                  count={mockStats.ranks.NONE} 
-                  total={mockStats.totalPurchases}
+                  count={noneCount} 
+                  total={totalSamples}
                   color="#E5E5E5"
                 />
               </div>
 
-              {/* 당첨률 */}
               <div style={{
                 marginTop: '16px',
                 padding: '16px',
@@ -220,96 +271,8 @@ export function Statistics({ onNavigate }: StatisticsProps) {
                   전체 당첨률
                 </div>
                 <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#00D9C0' }}>
-                  {(((mockStats.totalPurchases - mockStats.ranks.NONE) / mockStats.totalPurchases) * 100).toFixed(1)}%
+                  {totalSamples > 0 ? ((totalWins / totalSamples) * 100).toFixed(1) : '0.0'}%
                 </div>
-              </div>
-            </div>
-
-            {/* 자주 나온 번호 */}
-            <div style={{
-              backgroundColor: 'white',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-              borderRadius: '16px',
-              padding: '20px'
-            }}>
-              <h3 style={{ fontSize: '1rem', marginBottom: '16px' }}>자주 나온 번호 (Top 6)</h3>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {mockStats.mostFrequentNumbers.map((item, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px',
-                      backgroundColor: '#FAFAFA',
-                      borderRadius: '8px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{
-                        fontSize: '0.875rem',
-                        fontWeight: '600',
-                        color: '#767676',
-                        minWidth: '24px'
-                      }}>
-                        {index + 1}위
-                      </div>
-                      <div
-                        style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '50%',
-                          backgroundColor: getBallColor(item.number),
-                          color: 'white',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: '600',
-                          fontSize: '1rem'
-                        }}
-                      >
-                        {item.number}
-                      </div>
-                    </div>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}>
-                      <span style={{ fontSize: '0.875rem', color: '#767676' }}>
-                        {item.count}회 출현
-                      </span>
-                      <div style={{
-                        width: '60px',
-                        height: '6px',
-                        backgroundColor: '#E5E5E5',
-                        borderRadius: '3px',
-                        overflow: 'hidden'
-                      }}>
-                        <div style={{
-                          width: `${(item.count / mockStats.totalPurchases) * 100}%`,
-                          height: '100%',
-                          backgroundColor: '#00D9C0',
-                          borderRadius: '3px'
-                        }} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{
-                marginTop: '16px',
-                padding: '12px',
-                backgroundColor: '#F0FDF4',
-                borderRadius: '8px',
-                textAlign: 'center'
-              }}>
-                <p style={{ fontSize: '0.8125rem', color: '#767676', margin: 0 }}>
-                  💡 자주 나온 번호는 참고용이며, 실제 당첨 확률과는 무관합니다
-                </p>
               </div>
             </div>
           </>
