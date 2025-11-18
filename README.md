@@ -37,6 +37,7 @@ npm run dev
 
 ```
 src/
+├── docs            # UI/UX 디자인 문서
 ├── api/            # 백엔드 REST API wrapper
 ├── components/     # 페이지/도메인별 UI
 ├── App.tsx         # 상태 관리 및 뷰 전환
