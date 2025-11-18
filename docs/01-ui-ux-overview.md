@@ -97,6 +97,6 @@ CLI 로또 프로그램은 기능적으로는 완성되어 있지만, 사용자 
 
 ## 문서 구성
 
-- [사용자 리서치 & 분석](./research-and-analysis.md)  
-- [IA & 사용자 흐름 설계](./ia-design.md)  
-- [UI 디자인](./ui-design.md)
+- [사용자 리서치 & 분석](./02-research-and-analysis.md)  
+- [IA & 사용자 흐름 설계](./03-ia-design.md)  
+- [UI 디자인](./04-ui-design.md)
