@@ -57,3 +57,15 @@ src/
 자세한 Request/Response 스펙은 백엔드 README를 참고하세요.
 
 <https://github.com/Woohyeon-Hong/lotto-web-backend>
+
+## Design & UX 문서
+
+이 프로젝트는 기존 CLI 로또 프로그램을 사용자가 더 쉽게 이용할 수 있도록  
+UX 리서치 → IA 설계 → UI 디자인 순으로 확장했습니다.
+
+자세한 과정은 아래 문서에서 확인할 수 있습니다:
+
+- [UX 개요](./docs/ux-overview.md)
+- [사용자 리서치 & 분석](./docs/research-and-analysis.md)
+- [IA & 사용자 흐름 설계](./docs/ia-design.md)
+- [UI 디자인](./docs/ui-design.md)
