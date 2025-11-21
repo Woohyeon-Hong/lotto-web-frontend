@@ -1,4 +1,5 @@
 import { Wallet, ListChecks, Award, History } from 'lucide-react';
+import { LottoLogo } from './LottoLogo';
 
 type Page = 'home' | 'purchase' | 'purchase-result' | 'purchase-history' | 'winning' | 'statistics';
 
@@ -20,10 +21,11 @@ export function Home({ onNavigate }: HomeProps) {
         textAlign: 'center'
       }}>
         <div style={{
-          fontSize: '48px',
-          marginBottom: '16px'
+          marginBottom: '20px',
+          display: 'flex',
+          justifyContent: 'center'
         }}>
-          🎰
+          <LottoLogo />
         </div>
         <h1 style={{ 
           color: 'white', 

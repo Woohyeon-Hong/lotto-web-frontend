@@ -1,7 +1,10 @@
 import { FileText, Calendar, ChevronDown, ChevronUp, Ticket, AlertCircle } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import type { ReactElement } from 'react';
 import { getPurchases, getPurchase } from '../api/lottos';
 import type { PurchaseSummaryResponse, PurchaseDetailResponse } from '../api/types';
+import { WalletIcon } from './icons/WalletIcon';
+import { TicketIcon } from './icons/TicketIcon';
 
 type Page = 'home' | 'purchase' | 'purchase-result' | 'purchase-history' | 'winning' | 'statistics';
 
@@ -148,12 +151,12 @@ export function Histories({ onNavigate, onSetPurchaseId }: HistoriesProps) {
               <SummaryCard
                 label="총 구매 금액"
                 value={`${totalAmount.toLocaleString()}원`}
-                icon="💰"
+                icon={<WalletIcon />}
               />
               <SummaryCard
                 label="총 발행 장수"
                 value={`${totalTickets}장`}
-                icon="🎟️"
+                icon={<TicketIcon />}
               />
             </div>
 
@@ -232,7 +235,7 @@ export function Histories({ onNavigate, onSetPurchaseId }: HistoriesProps) {
 interface SummaryCardProps {
   label: string;
   value: string;
-  icon: string;
+  icon: string | ReactElement;
 }
 
 function SummaryCard({ label, value, icon }: SummaryCardProps) {
@@ -244,7 +247,9 @@ function SummaryCard({ label, value, icon }: SummaryCardProps) {
       boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
       textAlign: 'center'
     }}>
-      <div style={{ fontSize: '32px', marginBottom: '8px' }}>{icon}</div>
+      <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}>
+        {typeof icon === 'string' ? <div style={{ fontSize: '32px' }}>{icon}</div> : icon}
+      </div>
       <div style={{ fontSize: '0.8125rem', color: '#767676', marginBottom: '4px' }}>
         {label}
       </div>
@@ -256,6 +261,7 @@ function SummaryCard({ label, value, icon }: SummaryCardProps) {
 }
 
 interface HistoryCardProps {
+  key?: React.Key;
   purchase: PurchaseSummaryResponse;
   detail: PurchaseDetailResponse | undefined;
   isExpanded: boolean;
